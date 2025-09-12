@@ -33,8 +33,67 @@ fp-info-cache
 *.xml
 *.csv
 
-# Archived Backups (KiCad 6.0)
+# Archived Backups (KiCad 6.0+)
 **/*-backups/*.zip
 
 # Local project settings
 *.kicad_prl
+
+# Production files (keep in production/ directory)
+# Uncomment if you want to track production files in git
+# *.gbr
+# *.drl
+# *.pdf
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Logs
+*.log
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# DevContainer
+.devcontainer/.env
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Simulation files
+*.raw
+*.txt
+
+# Documentation build
+docs/_build/
+docs/build/
+
+# Node modules (if using web-based tools)
+node_modules/
+
+# Temporary directories
+tmp/
+temp/

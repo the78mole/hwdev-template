@@ -2,12 +2,12 @@ name: Design Rule Check
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
     paths:
       - 'hardware/**/*.kicad_*'
       - '.github/workflows/design-check.yml'
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
     paths:
       - 'hardware/**/*.kicad_*'
       - '.github/workflows/design-check.yml'
@@ -17,81 +17,85 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: kicad/kicad:8.0.6-ubuntu-22.04
-      
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup environment
-      run: |
-        apt-get update
-        apt-get install -y python3-pip
-        pip3 install kibot kicad-cli-tools
-        
-    - name: Find KiCad projects
-      id: find-projects
-      run: |
-        projects=$(find hardware/ -name "*.kicad_pro" 2>/dev/null || echo "")
-        if [ -z "$projects" ]; then
-          echo "No KiCad projects found in hardware/ directory"
-          echo "projects=" >> $GITHUB_OUTPUT
-        else
-          echo "Found KiCad projects:"
-          echo "$projects"
-          echo "projects<<EOF" >> $GITHUB_OUTPUT
-          echo "$projects" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-        fi
-        
-    - name: Run Design Rule Check
-      if: steps.find-projects.outputs.projects != ''
-      run: |
-        echo "${{ steps.find-projects.outputs.projects }}" | while read -r project; do
-          if [ -n "$project" ]; then
-            echo "Running DRC for: $project"
-            pcb_file="${project%.kicad_pro}.kicad_pcb"
-            if [ -f "$pcb_file" ]; then
-              kicad-cli pcb drc --format json --output "${project%.kicad_pro}_drc.json" "$pcb_file" || true
-              echo "DRC results for $project:"
-              cat "${project%.kicad_pro}_drc.json" 2>/dev/null || echo "No DRC output generated"
-            else
-              echo "PCB file not found for project: $project"
-            fi
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        run: |
+          apt-get update
+          apt-get install -y python3-pip
+          pip3 install kibot kicad-cli-tools
+
+      - name: Find KiCad projects
+        id: find-projects
+        run: |
+          projects=$(find hardware/ -name "*.kicad_pro" 2>/dev/null || echo "")
+          if [ -z "$projects" ]; then
+            echo "No KiCad projects found in hardware/ directory"
+            echo "projects=" >> $GITHUB_OUTPUT
+          else
+            echo "Found KiCad projects:"
+            echo "$projects"
+            echo "projects<<EOF" >> $GITHUB_OUTPUT
+            echo "$projects" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
           fi
-        done
-        
-    - name: Run Electrical Rules Check
-      if: steps.find-projects.outputs.projects != ''
-      run: |
-        echo "${{ steps.find-projects.outputs.projects }}" | while read -r project; do
-          if [ -n "$project" ]; then
-            echo "Running ERC for: $project"
-            sch_file="${project%.kicad_pro}.kicad_sch"
-            if [ -f "$sch_file" ]; then
-              kicad-cli sch erc --format json --output "${project%.kicad_pro}_erc.json" "$sch_file" || true
-              echo "ERC results for $project:"
-              cat "${project%.kicad_pro}_erc.json" 2>/dev/null || echo "No ERC output generated"
-            else
-              echo "Schematic file not found for project: $project"
+
+      - name: Run Design Rule Check
+        if: steps.find-projects.outputs.projects != ''
+        run: |
+          echo "${{ steps.find-projects.outputs.projects }}" | while read -r project; do
+            if [ -n "$project" ]; then
+              echo "Running DRC for: $project"
+              pcb_file="${project%.kicad_pro}.kicad_pcb"
+              if [ -f "$pcb_file" ]; then
+                kicad-cli pcb drc --format json \
+                  --output "${project%.kicad_pro}_drc.json" "$pcb_file" || true
+                echo "DRC results for $project:"
+                cat "${project%.kicad_pro}_drc.json" 2>/dev/null || \
+                  echo "No DRC output generated"
+              else
+                echo "PCB file not found for project: $project"
+              fi
             fi
+          done
+
+      - name: Run Electrical Rules Check
+        if: steps.find-projects.outputs.projects != ''
+        run: |
+          echo "${{ steps.find-projects.outputs.projects }}" | while read -r project; do
+            if [ -n "$project" ]; then
+              echo "Running ERC for: $project"
+              sch_file="${project%.kicad_pro}.kicad_sch"
+              if [ -f "$sch_file" ]; then
+                kicad-cli sch erc --format json \
+                  --output "${project%.kicad_pro}_erc.json" "$sch_file" || true
+                echo "ERC results for $project:"
+                cat "${project%.kicad_pro}_erc.json" 2>/dev/null || \
+                  echo "No ERC output generated"
+              else
+                echo "Schematic file not found for project: $project"
+              fi
+            fi
+          done
+
+      - name: Upload check results
+        if: steps.find-projects.outputs.projects != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: design-check-results
+          path: |
+            hardware/*_drc.json
+            hardware/*_erc.json
+          retention-days: 30
+
+      - name: Report status
+        run: |
+          if [ -z "${{ steps.find-projects.outputs.projects }}" ]; then
+            echo "✅ No KiCad projects found - nothing to check"
+          else
+            echo "✅ Design rule checks completed"
+            echo "Check the uploaded artifacts for detailed results"
           fi
-        done
-        
-    - name: Upload check results
-      if: steps.find-projects.outputs.projects != ''
-      uses: actions/upload-artifact@v4
-      with:
-        name: design-check-results
-        path: |
-          hardware/*_drc.json
-          hardware/*_erc.json
-        retention-days: 30
-        
-    - name: Report status
-      run: |
-        if [ -z "${{ steps.find-projects.outputs.projects }}" ]; then
-          echo "✅ No KiCad projects found - nothing to check"
-        else
-          echo "✅ Design rule checks completed"
-          echo "Check the uploaded artifacts for detailed results"
-        fi

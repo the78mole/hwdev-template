@@ -14,7 +14,7 @@ jobs:
   generate-production-files:
     runs-on: ubuntu-latest
     container:
-      image: kicad/kicad:8.0.6-ubuntu-22.04
+      image: ghcr.io/the78mole/kicaddev:latest
       
     steps:
     - name: Checkout code
@@ -22,9 +22,10 @@ jobs:
       
     - name: Setup environment
       run: |
-        apt-get update
-        apt-get install -y python3-pip zip
-        pip3 install kibot kicad-cli-tools
+        # Update package list and install required packages if not present
+        apt-get update || true
+        apt-get install -y python3-pip zip || true
+        pip3 install --upgrade kibot kicad-cli-tools || pip3 install kibot kicad-cli-tools || true
         
     - name: Create production directory
       run: mkdir -p production

@@ -1,6 +1,6 @@
 {
   "name": "Hardware Development Environment",
-  "image": "kicad/kicad:8.0.6-ubuntu-22.04",
+  "image": "ghcr.io/the78mole/kicaddev:latest",
   "features": {
     "ghcr.io/devcontainers/features/common-utils:2": {
       "installZsh": true,
@@ -54,7 +54,7 @@
   "containerEnv": {
     "DISPLAY": "${localEnv:DISPLAY}"
   },
-  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y python3-pip git-lfs && pip3 install --user kicad-cli-tools kibot",
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y python3-pip git-lfs && pip3 install --user --upgrade kicad-cli-tools kibot || pip3 install --user kicad-cli-tools kibot",
   "forwardPorts": [],
   "otherPortsAction": "ignore",
   "portsAttributes": {},

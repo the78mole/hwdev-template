@@ -1,0 +1,89 @@
+name: Validate DevContainer
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '.devcontainer/**'
+      - '.github/workflows/validate-devcontainer.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - '.devcontainer/**'
+      - '.github/workflows/validate-devcontainer.yml'
+
+jobs:
+  validate-devcontainer:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Validate DevContainer configuration
+      run: |
+        echo "Validating DevContainer configuration..."
+        
+        # Check if devcontainer.json exists
+        if [ ! -f ".devcontainer/devcontainer.json" ]; then
+          echo "❌ DevContainer configuration not found"
+          exit 1
+        fi
+        
+        # Validate JSON syntax
+        if command -v jq > /dev/null; then
+          if jq empty .devcontainer/devcontainer.json; then
+            echo "✅ DevContainer JSON syntax is valid"
+          else
+            echo "❌ DevContainer JSON syntax is invalid"
+            exit 1
+          fi
+        else
+          echo "⚠️ jq not available, skipping JSON validation"
+        fi
+        
+        # Check for required fields
+        if grep -q '"image"' .devcontainer/devcontainer.json; then
+          echo "✅ Docker image specified"
+        else
+          echo "❌ No Docker image specified"
+          exit 1
+        fi
+        
+        echo "✅ DevContainer configuration validation completed"
+        
+    - name: Test DevContainer build
+      uses: devcontainers/ci@v0.3
+      with:
+        imageName: hwdev-template-test
+        runCmd: |
+          echo "Testing DevContainer environment..."
+          
+          # Check if KiCad is available
+          if command -v kicad > /dev/null; then
+            echo "✅ KiCad is available"
+            kicad --version || echo "KiCad version check completed"
+          else
+            echo "❌ KiCad not found in PATH"
+            exit 1
+          fi
+          
+          # Check if Python is available
+          if command -v python3 > /dev/null; then
+            echo "✅ Python3 is available"
+            python3 --version
+          else
+            echo "❌ Python3 not found"
+            exit 1
+          fi
+          
+          # Check if git is available
+          if command -v git > /dev/null; then
+            echo "✅ Git is available"
+            git --version
+          else
+            echo "❌ Git not found"
+            exit 1
+          fi
+          
+          echo "✅ DevContainer environment test completed successfully"

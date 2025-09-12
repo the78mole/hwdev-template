@@ -1,0 +1,79 @@
+name: Setup New Repository
+
+on:
+  push:
+    branches: [ main ]
+  create:
+
+jobs:
+  setup-repository:
+    runs-on: ubuntu-latest
+    if: github.repository != 'the78mole/hwdev-template' # Only run in repositories created from template
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Check if this is a new repository from template
+      id: check-new-repo
+      run: |
+        # Check if this looks like a new repository (no KiCad projects yet)
+        if [ ! -f "hardware/*.kicad_pro" ] && [ ! -f ".setup_complete" ]; then
+          echo "new_repo=true" >> $GITHUB_OUTPUT
+        else
+          echo "new_repo=false" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Create Getting Started Checklist Issue
+      if: steps.check-new-repo.outputs.new_repo == 'true'
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const fs = require('fs');
+          const path = '.github/ISSUE_TEMPLATE/getting-started-checklist.md';
+          
+          if (fs.existsSync(path)) {
+            const template = fs.readFileSync(path, 'utf8');
+            
+            // Extract title and body from the template
+            const lines = template.split('\n');
+            let title = '🚀 Getting Started Checklist';
+            let body = '';
+            let inBody = false;
+            
+            for (const line of lines) {
+              if (line.startsWith('title:')) {
+                title = line.replace('title:', '').trim().replace(/['"]/g, '');
+              } else if (line === '---' && inBody) {
+                break;
+              } else if (line === '---') {
+                inBody = true;
+              } else if (inBody) {
+                body += line + '\n';
+              }
+            }
+            
+            // Create the issue
+            const response = await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: body.trim(),
+              labels: ['getting-started', 'checklist']
+            });
+            
+            console.log(`Created getting started checklist issue: ${response.data.html_url}`);
+          } else {
+            console.log('Getting started template not found');
+          }
+          
+    - name: Mark setup as complete
+      if: steps.check-new-repo.outputs.new_repo == 'true'
+      run: |
+        echo "Repository setup completed on $(date)" > .setup_complete
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add .setup_complete
+        git commit -m "Mark repository setup as complete" || exit 0
+        git push || exit 0

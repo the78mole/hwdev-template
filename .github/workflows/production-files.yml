@@ -1,0 +1,171 @@
+name: Generate Production Files
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag for production files'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  generate-production-files:
+    runs-on: ubuntu-latest
+    container:
+      image: kicad/kicad:8.0.6-ubuntu-22.04
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup environment
+      run: |
+        apt-get update
+        apt-get install -y python3-pip zip
+        pip3 install kibot kicad-cli-tools
+        
+    - name: Create production directory
+      run: mkdir -p production
+        
+    - name: Find KiCad projects
+      id: find-projects
+      run: |
+        projects=$(find hardware/ -name "*.kicad_pro" 2>/dev/null || echo "")
+        if [ -z "$projects" ]; then
+          echo "No KiCad projects found in hardware/ directory"
+          echo "projects=" >> $GITHUB_OUTPUT
+        else
+          echo "Found KiCad projects:"
+          echo "$projects"
+          echo "projects<<EOF" >> $GITHUB_OUTPUT
+          echo "$projects" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Generate Gerber files
+      if: steps.find-projects.outputs.projects != ''
+      run: |
+        echo "${{ steps.find-projects.outputs.projects }}" | while read -r project; do
+          if [ -n "$project" ]; then
+            project_name=$(basename "${project%.kicad_pro}")
+            pcb_file="${project%.kicad_pro}.kicad_pcb"
+            
+            if [ -f "$pcb_file" ]; then
+              echo "Generating Gerbers for: $project_name"
+              
+              # Create project-specific production directory
+              mkdir -p "production/${project_name}"
+              
+              # Generate Gerber files
+              kicad-cli pcb export gerbers \
+                --output "production/${project_name}/" \
+                --layer F.Cu,B.Cu,F.Mask,B.Mask,F.SilkS,B.SilkS,F.Paste,B.Paste,Edge.Cuts \
+                "$pcb_file"
+                
+              # Generate drill files
+              kicad-cli pcb export drill \
+                --output "production/${project_name}/" \
+                --format excellon \
+                "$pcb_file"
+                
+              # Generate pick and place files
+              kicad-cli pcb export pos \
+                --output "production/${project_name}/${project_name}_pos.csv" \
+                --format csv \
+                --units mm \
+                --side front \
+                "$pcb_file"
+                
+              kicad-cli pcb export pos \
+                --output "production/${project_name}/${project_name}_pos_back.csv" \
+                --format csv \
+                --units mm \
+                --side back \
+                "$pcb_file"
+            fi
+          fi
+        done
+        
+    - name: Generate BOM files
+      if: steps.find-projects.outputs.projects != ''
+      run: |
+        echo "${{ steps.find-projects.outputs.projects }}" | while read -r project; do
+          if [ -n "$project" ]; then
+            project_name=$(basename "${project%.kicad_pro}")
+            sch_file="${project%.kicad_pro}.kicad_sch"
+            
+            if [ -f "$sch_file" ]; then
+              echo "Generating BOM for: $project_name"
+              
+              # Generate BOM
+              kicad-cli sch export bom \
+                --output "production/${project_name}/${project_name}_bom.csv" \
+                --format csv \
+                "$sch_file"
+            fi
+          fi
+        done
+        
+    - name: Generate PDF documentation
+      if: steps.find-projects.outputs.projects != ''
+      run: |
+        echo "${{ steps.find-projects.outputs.projects }}" | while read -r project; do
+          if [ -n "$project" ]; then
+            project_name=$(basename "${project%.kicad_pro}")
+            sch_file="${project%.kicad_pro}.kicad_sch"
+            pcb_file="${project%.kicad_pro}.kicad_pcb"
+            
+            # Generate schematic PDF
+            if [ -f "$sch_file" ]; then
+              kicad-cli sch export pdf \
+                --output "production/${project_name}/${project_name}_schematic.pdf" \
+                "$sch_file"
+            fi
+            
+            # Generate PCB PDF
+            if [ -f "$pcb_file" ]; then
+              kicad-cli pcb export pdf \
+                --output "production/${project_name}/${project_name}_pcb.pdf" \
+                --layers F.Cu,B.Cu,F.SilkS,B.SilkS,F.Mask,B.Mask,Edge.Cuts \
+                "$pcb_file"
+            fi
+          fi
+        done
+        
+    - name: Create production archives
+      if: steps.find-projects.outputs.projects != ''
+      run: |
+        cd production
+        for project_dir in */; do
+          if [ -d "$project_dir" ]; then
+            project_name=$(basename "$project_dir")
+            echo "Creating archive for: $project_name"
+            zip -r "${project_name}_production_files.zip" "$project_dir"
+          fi
+        done
+        
+    - name: Get version
+      id: version
+      run: |
+        if [ "${{ github.event_name }}" = "release" ]; then
+          echo "version=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+        else
+          echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Upload production files
+      uses: actions/upload-artifact@v4
+      with:
+        name: production-files-${{ steps.version.outputs.version }}
+        path: production/
+        retention-days: 90
+        
+    - name: Upload to release (if release event)
+      if: github.event_name == 'release'
+      uses: softprops/action-gh-release@v2
+      with:
+        files: production/*.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
